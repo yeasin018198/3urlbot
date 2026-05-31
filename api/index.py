@@ -4,11 +4,11 @@ import telebot
 from flask import Flask, request
 
 # আপনার তথ্যসমূহ
-TOKEN = "8946958697:AAFl-TWsgySSP2787ohoFabxzLCkOTtyuVw" # @BotFather থেকে পাওয়া টোকেন
+TOKEN = "8946958697:AAFl-TWsgySSP2787ohoFabxzLCkOTtyuVw" 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# শর্টনার সাইট কনফিগারেশন
+# শর্টনার সাইট কনফিগারেশন (ক্রমানুযায়ী)
 SITES = [
     {"name": "GPLinks", "url": "https://gplinks-lilac.vercel.app/api", "api": "akash19888"},
     {"name": "STLink Gold", "url": "https://stlink-gold.vercel.app/api", "api": "akash198"},
@@ -17,15 +17,14 @@ SITES = [
 
 def shorten_link(base_url, api_key, long_url):
     try:
-        # সাধারণত এই সাইটগুলো GET রিকোয়েস্ট গ্রহণ করে
         params = {'api': api_key, 'url': long_url, 'format': 'text'}
-        response = requests.get(base_url, params=params, timeout=10)
-        if response.status_code == 200:
+        response = requests.get(base_url, params=params, timeout=15)
+        if response.status_code == 200 and response.text.startswith("http"):
             return response.text.strip()
         else:
-            return "লিংক তৈরি করা যায়নি"
+            return None
     except:
-        return "সার্ভার এরর!"
+        return None
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -39,24 +38,37 @@ def webhook():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "স্বাগতম! আমাকে একটি বড় লিংক পাঠান, আমি ৩টি শর্টনার থেকে ছোট করে দেব।")
+    bot.reply_to(message, "স্বাগতম! আমাকে একটি বড় লিংক পাঠান, আমি সেটি ৩টি শর্টনারের ভেতর দিয়ে পাস করিয়ে ১টি ফাইনাল লিংক দেব।")
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    url = message.text
-    if not url.startswith("http"):
+    original_url = message.text.strip()
+    
+    if not original_url.startswith("http"):
         bot.reply_to(message, "দয়া করে একটি সঠিক লিংক দিন (http:// বা https:// সহ)")
         return
 
-    msg = bot.reply_to(message, "লিংক ছোট করা হচ্ছে, দয়া করে অপেক্ষা করুন...")
+    wait_msg = bot.reply_to(message, "🔗 লিংকটি ৩টি লেয়ারে ছোট করা হচ্ছে, দয়া করে অপেক্ষা করুন...")
     
-    result_text = "✅ আপনার শর্ট লিংকগুলো:\n\n"
+    # চেইনিং প্রসেস শুরু
+    current_url = original_url
+    success = True
+    
     for site in SITES:
-        short = shorten_link(site['url'], site['api'], url)
-        result_text += f"🔗 {site['name']}: {short}\n"
-    
-    bot.edit_message_text(result_text, message.chat.id, msg.message_id)
+        shortened = shorten_link(site['url'], site['api'], current_url)
+        if shortened:
+            current_url = shortened # আগের শর্ট লিংক এখন নতুন ইনপুট
+        else:
+            success = False
+            error_site = site['name']
+            break
+
+    if success:
+        final_text = f"✅ আপনার ফাইনাল শর্ট লিংক:\n\n{current_url}"
+        bot.edit_message_text(final_text, message.chat.id, wait_msg.message_id)
+    else:
+        bot.edit_message_text(f"❌ দুঃখিত, {error_site} থেকে লিংক শর্ট করার সময় সমস্যা হয়েছে।", message.chat.id, wait_msg.message_id)
 
 @app.route('/')
 def index():
-    return "Bot is running..."
+    return "Bot is running with Chaining system..."
